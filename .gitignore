@@ -1,3 +1,9 @@
+# Files
+Dataset/Linguistic/DopeOrNope.parquet
+Dataset/Math/MetaMathQA-395K.json
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
