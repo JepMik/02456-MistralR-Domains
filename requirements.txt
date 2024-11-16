@@ -1,5 +1,12 @@
 numpy
 pandas
-json
 scikit-learn
 pyarrow
+torch
+transformers
+peft
+datasets
+huggingface
+datasets
+transformers==4.46.2
+bitsandbytes==0.37.1

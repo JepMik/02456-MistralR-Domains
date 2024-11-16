@@ -1,4 +1,4 @@
-## Script that load meta-math/MetaMathQA and DopeorNope/Linguistic_Calibration_Llama3.1 and format it to json and lit it into train, test
+## Script that load meta-math/MetaMathQA and Linguistic_Calibration_Llama3.1 and format it to json and lit it into train, test
 import os
 import json
 import pandas as pd
@@ -60,5 +60,5 @@ for j in range(len(datasets)):
     train, test = train_test_split(df, test_size=0.2, random_state=42)
 
     # Save the train and test dataframes to JSON files in #NAME/Test, #Name/Train
-    train.to_json(DATA_PATH + datasets[j].split('/')[0] + "/Train/" + datasets[j].split('/')[1] + "-train.json", orient='records')
-    test.to_json(DATA_PATH + datasets[j].split('/')[0] + "/Test/" + datasets[j].split('/')[1] + "-test.json", orient='records')
+    train.to_json(DATA_PATH + datasets[j].split('/')[0] + "/Train/" + datasets[j].split('/')[1].split('.')[0] + "-train.json", orient='records')
+    test.to_json(DATA_PATH + datasets[j].split('/')[0] + "/Test/" + datasets[j].split('/')[1].split('.')[0] + "-test.json", orient='records')
