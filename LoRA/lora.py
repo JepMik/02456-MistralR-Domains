@@ -91,7 +91,7 @@ for key, value in data_dict.items():
         model = get_peft_model(model, lora_config)
 
         # Train
-        training_args = TrainingArguments(
+        training_args = TrainingArguments( # TODO SPLITS NOT WORKING
             output_dir=OUTPUT_DIR,
             num_train_epochs=1, # TODO: Should be changed
             per_device_train_batch_size=1,
