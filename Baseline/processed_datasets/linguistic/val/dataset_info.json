@@ -1,0 +1,46 @@
+{
+  "builder_name": "parquet",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "linguistic_calibration_llama3.1",
+  "dataset_size": 10301734,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/DopeorNope/Linguistic_Calibration_Llama3.1@ebe33000582e121ce31e37d9ac3e2629c6b39ebc/data/train-00000-of-00001.parquet": {
+      "num_bytes": 5288759,
+      "checksum": null
+    }
+  },
+  "download_size": 5288759,
+  "features": {
+    "question_id": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "paragraph_generation_prompt": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "claude_summary": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 15590493,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 10301734,
+      "num_examples": 10000,
+      "dataset_name": "linguistic_calibration_llama3.1"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}
