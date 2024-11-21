@@ -4,6 +4,8 @@ import os
 from huggingface_hub import login
 from datasets import load_dataset, load_from_disk, DatasetDict
 import pandas as pd
+import json
+from transformers.generation.stopping_criteria import StoppingCriteria, StoppingCriteriaList
 
 # Used in HPC
 userToken = os.getenv("HUGGINGFACE_HUB_TOKEN")
@@ -18,32 +20,76 @@ print("Script started...")
 
 # Constants
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
-OUTPUT_DIR = "./mistral_lora"
+OUTPUT_DIR = "Baseline/"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MODELPATH = "ModelMistral"
 PROCESSED_DIR = "Baseline/processed_datasets"
 
+class StopOnToken(StoppingCriteria):
+    def __init__(self, stop_token_id):
+        self.stop_token_id = stop_token_id
 
-def generate_responses(dataset, prompt_column, max_new_tokens=50):
+    def __call__(self, input_ids, scores, **kwargs):
+        # Check if the last generated token matches the stop token
+        return input_ids[0, -1] == self.stop_token_id
+
+
+def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max_new_tokens=150):
     """
     Generate responses for a given dataset using the specified prompt column.
+    Include the ground truth (claude_summary) in the results.
     """
-    results = []
-    for iter, example in enumerate(dataset):
-        # Extract the prompt
+    
+    
+    
+    # Encode the stop token
+    stop_token_id = tokenizer.encode("###END", add_special_tokens=False)[0]
+    # Define stopping criteria
+    stopping_criteria = StoppingCriteriaList([StopOnToken(stop_token_id)])
+    results = {}
+    for i, example in enumerate(dataset):
+        # Extract the prompt, ground truth (claude_summary), and id
         prompt = example[prompt_column]
+        groundtruth = example[ground_truth_column]
+        if name_id == "question_id":
+            id = example[name_id]
+        else:
+            id = example[name_id] + str(i)
+        
+        # Format the prompt
+        formatted_prompt = f"###Query:\n {prompt}\n###Answer:\n"
+        
         # Tokenize the input
-        inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
+        inputs = tokenizer(formatted_prompt, return_tensors="pt").to(DEVICE)
+        
         # Generate model response
-        output = model.generate(**inputs, max_new_tokens=max_new_tokens)
+        output = model.generate(**inputs, 
+                                max_new_tokens=max_new_tokens,
+                                do_sample=True,
+                                pad_token_id=tokenizer.eos_token_id,
+                                temperature=0.2,
+                                top_k=50,
+                                top_p=0.02,
+                                eos_token_id=tokenizer.eos_token_id,
+                                )
         # Decode the response
         generated_response = tokenizer.decode(output[0], skip_special_tokens=True)
-        results.append({
+        
+        # Try to split the generated response to remove the redundant part answer token
+        try:
+            generate_responses_split = generated_response.split("###Answer")
+            generate_responses = generate_responses_split[0] + generate_responses_split[1]
+        except:
+            generate_responses = generated_response
+        
+        
+        # Append results with id as key
+        results[id] = {
             "prompt": prompt,
-            "generated_response": generated_response
-        })
-        if iter % 10 == 0:
-            print(f"Iter: {str(iter)} Prompt: {prompt}\nGenerated: {generated_response}\n")
+            "generated_response": generated_response,
+            "groundtruth": groundtruth
+        }
+        
     return results
 
 
@@ -96,8 +142,8 @@ def split_dataset(dataset):
 
 # Load or process the datasets
 linguistic_dataset, meta_math_dataset = load_or_process_datasets()
-print(linguistic_dataset['test'])
-print(linguistic_dataset['test'][0])
+#print(linguistic_dataset['test'])
+#print(linguistic_dataset['test'][0])
 
 
 # Load the model and tokenizer from the local directory if available and not empty
@@ -120,22 +166,32 @@ print("Model loaded.")
 ling_test = linguistic_dataset["test"]
 math_test = meta_math_dataset["test"]
 
-linguistic_res = generate_responses(ling_test, prompt_column="paragraph_generation_prompt")
-#linguistic_res = generate_responses(ling_test, prompt_column="paragraph_generation_prompt")
 
-print("Ling Res" + str(linguistic_res[0]))
+# Decrease ling test to 2 for testing
+#ling_test = ling_test.select(range(2))
+#math_test = math_test.select(range(2))
 
-    # Save results for later evaluation
-linguistic_df = pd.DataFrame(linguistic_res)
-#math_df = pd.DataFrame(math_results)
-# Add ground truth columns for comparative evaluation (optional)
-linguistic_df["ground_truth"] = linguistic_dataset["claude_summary"]
-#math_df["ground_truth"] = datasets["meta_math"]["response"]
+#print("Ling Test: " + str(ling_test))
+#print("Math Test: " + str(math_test))
 
-# Save to disk
-linguistic_df.to_csv("linguistic_results.csv", index=False)
-#math_df.to_csv("math_results.csv", index=False)
-# Load the pretrained Mistral model and tokenizer
+# print all in ling_test
+#for i in range(len(ling_test)):
+#    print(ling_test[i])
+
+
+linguistic_res = generate_responses(ling_test, prompt_column="paragraph_generation_prompt", ground_truth_column="claude_summary", name_id="question_id")
+math_res = generate_responses(math_test, prompt_column="query", ground_truth_column="response", name_id="type")
+
+#print("Results: " + str(linguistic_res))
+#print("Results: " + str(math_res))
+
+# Save linguistic results to disk as json   
+with open(f"{OUTPUT_DIR}/linguistic_results.json", "w") as f:
+    json.dump(linguistic_res, f)
+    
+with open(f"{OUTPUT_DIR}/math_results.json", "w") as f:
+    json.dump(math_res, f)
+
 
 
  
