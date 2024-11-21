@@ -6,6 +6,8 @@ from datasets import load_dataset, load_from_disk, DatasetDict
 import pandas as pd
 import json
 from transformers.generation.stopping_criteria import StoppingCriteria, StoppingCriteriaList
+from alive_progress import alive_bar
+import logging
 
 # Used in HPC
 userToken = os.getenv("HUGGINGFACE_HUB_TOKEN")
@@ -24,72 +26,97 @@ OUTPUT_DIR = "Baseline/"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MODELPATH = "ModelMistral"
 PROCESSED_DIR = "Baseline/processed_datasets"
+BATCH_SIZE = 8
 
-class StopOnToken(StoppingCriteria):
-    def __init__(self, stop_token_id):
-        self.stop_token_id = stop_token_id
+# Logger setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('alive_progress')
 
-    def __call__(self, input_ids, scores, **kwargs):
-        # Check if the last generated token matches the stop token
-        return input_ids[0, -1] == self.stop_token_id
+    
+def create_prompt(prompt):
+    """
+    Create a formatted prompt for the model to generate a response.
+    """
+    return "[INST]\n" + prompt + "\n[/INST]"
+      
 
 
-def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max_new_tokens=150):
+def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max_new_tokens=520):
     """
     Generate responses for a given dataset using the specified prompt column.
     Include the ground truth (claude_summary) in the results.
     """
-    
-    
-    
-    # Encode the stop token
-    stop_token_id = tokenizer.encode("###END", add_special_tokens=False)[0]
-    # Define stopping criteria
-    stopping_criteria = StoppingCriteriaList([StopOnToken(stop_token_id)])
     results = {}
-    for i, example in enumerate(dataset):
-        # Extract the prompt, ground truth (claude_summary), and id
-        prompt = example[prompt_column]
-        groundtruth = example[ground_truth_column]
-        if name_id == "question_id":
-            id = example[name_id]
-        else:
-            id = example[name_id] + str(i)
-        
-        # Format the prompt
-        formatted_prompt = f"###Query:\n {prompt}\n###Answer:\n"
-        
-        # Tokenize the input
-        inputs = tokenizer(formatted_prompt, return_tensors="pt").to(DEVICE)
-        
-        # Generate model response
-        output = model.generate(**inputs, 
-                                max_new_tokens=max_new_tokens,
-                                do_sample=True,
-                                pad_token_id=tokenizer.eos_token_id,
-                                temperature=0.2,
-                                top_k=50,
-                                top_p=0.02,
-                                eos_token_id=tokenizer.eos_token_id,
-                                )
-        # Decode the response
-        generated_response = tokenizer.decode(output[0], skip_special_tokens=True)
-        
-        # Try to split the generated response to remove the redundant part answer token
-        try:
-            generate_responses_split = generated_response.split("###Answer")
-            generate_responses = generate_responses_split[0] + generate_responses_split[1]
-        except:
-            generate_responses = generated_response
-        
-        
-        # Append results with id as key
-        results[id] = {
-            "prompt": prompt,
-            "generated_response": generated_response,
-            "groundtruth": groundtruth
-        }
-        
+    batch_prompts = []
+    batch_ids = []
+    batch_groundtruths = []
+    current_batch = []
+
+    with alive_bar(len(dataset)) as bar:
+        for i, example in enumerate(dataset):
+            # Extract the prompt, ground truth (claude_summary), and id
+            prompt = example[prompt_column]
+            groundtruth = example[ground_truth_column]
+            if name_id == "question_id":
+                id = example[name_id]
+            else:
+                id = example[name_id] + str(i)
+            
+            # Append to the batch
+            batch_prompts.append(prompt)
+            batch_ids.append(id)
+            batch_groundtruths.append(groundtruth)
+            
+            # If batch is full, process the batch
+            if len(batch_prompts) == BATCH_SIZE or i == len(dataset) - 1:
+                # Format all prompts in the batch
+                formatted_prompts = [create_prompt(p) for p in batch_prompts]
+                
+                tokenizer.pad_token = tokenizer.eos_token
+                            
+                # Tokenize the batch
+                inputs = tokenizer(formatted_prompts, return_tensors="pt", padding=True, truncation=True, max_length=512).to(DEVICE)
+                model.config.pad_token_id = tokenizer.eos_token_id
+                
+                # Get the max input length for the batch
+                max_input_length = inputs['input_ids'].shape[1]
+                max_length = 1024  
+                remaining_tokens = max_length - max_input_length
+                
+                # Ensure we don't generate more than the remaining space
+                max_new_tokens = min(remaining_tokens, max_new_tokens)
+           
+                # Generate model responses for the entire batch
+                outputs = model.generate(
+                    **inputs, 
+                    max_new_tokens=max_new_tokens,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    temperature=0.2,
+                    top_k=50,
+                    top_p=0.02,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
+
+                # Decode the responses for the batch
+                batch_responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+
+                # Store results for each example in the batch
+                for idx, generated_response in zip(range(len(batch_responses)), batch_responses):
+                    id = batch_ids[idx]
+                    groundtruth = batch_groundtruths[idx]
+                    results[id] = {
+                        "prompt": batch_prompts[idx],
+                        "generated_response": generated_response,
+                        "groundtruth": groundtruth
+                    }
+
+                # Reset for next batch
+                batch_prompts = []
+                batch_ids = []
+                batch_groundtruths = []
+            bar()
+
     return results
 
 
@@ -160,6 +187,9 @@ else:
     model.save_pretrained(MODELPATH)
     tokenizer.save_pretrained(MODELPATH)
     
+# Move the model to the GPU if available    
+model.to(DEVICE)
+    
 print("Model loaded.")
 
 # We only consider test for baseline evaluation
@@ -168,8 +198,8 @@ math_test = meta_math_dataset["test"]
 
 
 # Decrease ling test to 2 for testing
-#ling_test = ling_test.select(range(2))
-#math_test = math_test.select(range(2))
+#ling_test = ling_test.select(range(20))
+#math_test = math_test.select(range(20))
 
 #print("Ling Test: " + str(ling_test))
 #print("Math Test: " + str(math_test))
