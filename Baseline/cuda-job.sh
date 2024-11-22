@@ -4,7 +4,7 @@
 #BSUB -q gpua100
 
 ### Name of job
-#BSUB -J Mistral7bLoRA
+#BSUB -J Mistral7bBaseline
 
 ### Number of cores
 #BSUB -n 1

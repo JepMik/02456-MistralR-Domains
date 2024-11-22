@@ -33,19 +33,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('alive_progress')
 
     
-def create_prompt(prompt):
+def create_prompt(prompt,flag_data):
     """
     Create a formatted prompt for the model to generate a response.
     """
+    if flag_data:
+        return "[INST]\n Provide the answer to the following question: \n" + prompt + "\n[/INST]"
     return "[INST]\n" + prompt + "\n[/INST]"
-      
-
 
 def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max_new_tokens=520):
     """
     Generate responses for a given dataset using the specified prompt column.
     Include the ground truth (claude_summary) in the results.
     """
+    flag_data = False
     results = {}
     batch_prompts = []
     batch_ids = []
@@ -58,8 +59,10 @@ def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max
             prompt = example[prompt_column]
             groundtruth = example[ground_truth_column]
             if name_id == "question_id":
+                # Linguisitic dataset
                 id = example[name_id]
             else:
+                flag_data = True
                 id = example[name_id] + str(i)
             
             # Append to the batch
@@ -70,7 +73,7 @@ def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max
             # If batch is full, process the batch
             if len(batch_prompts) == BATCH_SIZE or i == len(dataset) - 1:
                 # Format all prompts in the batch
-                formatted_prompts = [create_prompt(p) for p in batch_prompts]
+                formatted_prompts = [create_prompt(p,flag_data) for p in batch_prompts]
                 
                 tokenizer.pad_token = tokenizer.eos_token
                             
