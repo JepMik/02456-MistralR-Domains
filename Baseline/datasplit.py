@@ -2,9 +2,9 @@ from datasets import load_dataset, DatasetDict
 import os
 
 # Define directories for and processing
-processed_dir = "Baseline/processed_datasets"
+processed_dir = "processed_datasets"
 
-def load_or_process_datasets():
+def load_or_process_datasets(processed_dir=processed_dir):
     # Check if processed datasets exist locally
     if os.path.exists(f"{processed_dir}/linguistic") and os.path.exists(f"{processed_dir}/meta_math"):
         print("Loading processed datasets from local disk...")
@@ -50,5 +50,5 @@ def split_dataset(dataset):
     })
 
 # Load or process the datasets
-linguistic_dataset, meta_math_dataset = load_or_process_datasets()
+linguistic_dataset, meta_math_dataset = load_or_process_datasets(processed_dir)
 

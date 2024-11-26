@@ -4,7 +4,7 @@
 #BSUB -q gpua100
 
 ### Name of job
-#BSUB -J Mistral7bBaseline
+#BSUB -J eval
 
 ### Number of cores
 #BSUB -n 1
@@ -41,6 +41,6 @@ module load cuda/11.6
 cd $BLACKHOLE/02456-MistralR-Domains
 source $BLACKHOLE/env
 pip install -r requirements.txt
-python Baseline/baseline.py
+python Baseline/eval.py
 
 /appl/cuda/11.6.0/samples/bin/x86_64/linux/release/deviceQuery
