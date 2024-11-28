@@ -68,11 +68,8 @@ print(processed_data["train"][0])
 # Tokenize datasets
 def tokenize_data(dataDict, isMath):
     if isMath:
-        inputs = dataDict["query"]
-        outputs = dataDict["response"]
-
-        inputs = tokenizer(examples["query"], max_length=512, truncation=True, padding="max_length", return_tensors="pt").to(DEVICE)
-        outputs = tokenizer(examples["response"], max_length=512, truncation=True, padding="max_length", return_tensors="pt").to(DEVICE)
+        inputs = tokenizer(dataDict["query"], max_length=512, truncation=True, padding="max_length", return_tensors="pt").to(DEVICE)
+        outputs = tokenizer(dataDict["response"], max_length=512, truncation=True, padding="max_length", return_tensors="pt").to(DEVICE)
     else:
         inputs = dataDict["paragraph_generation_prompt"]
         outputs = dataDict["claude_summary"]
