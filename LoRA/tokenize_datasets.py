@@ -33,16 +33,15 @@ def load_processed_datasets(isMath: bool):
     if os.path.exists(f"{PROCESSED_DIR}/linguistic") and os.path.exists(f"{PROCESSED_DIR}/meta_math"):
         print("Loading processed datasets from local disk...")
         if isMath:
-            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math")
+            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math_tokenized")
         else:
-            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/linguistic")
+            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/linguistic_tokenized")
     else:
         raise FileNotFoundError("Processed datasets not found in the specified directory.")
 
 # Load dataset
 processed_data = load_processed_datasets(isMath)
 print(f"Loaded dataset: {processed_data}")
-print(f"Example entry: {processed_data['train'][0]}")
 
 # Function to tokenize a single example
 def tokenize(prompt, isMath):
