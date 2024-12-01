@@ -13,3 +13,4 @@ bitsandbytes==0.37.1
 evaluate
 alive_progress
 openai
+accelerate

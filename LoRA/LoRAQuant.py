@@ -39,7 +39,12 @@ else:
         print("Token found.")
         login(token=userToken)
 
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        trust_remote_code=True,
+        load_in_8bit=True,  # Enable quantization
+        device_map="auto",  # Auto-distribute model layers
+    )
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
     print(f"Saving model to {MODELPATH}...")
     model.save_pretrained(MODELPATH)
@@ -57,46 +62,7 @@ def load_tokenized_datasets(IsMath: bool):
     else:
         raise Exception("Tokenized datasets not found")
 
-def truncate_all_fields(example):
-    # Token IDs for <s> and eos_token
-    eos_token_id = tokenizer.eos_token_id
-    special_token_id = tokenizer.convert_tokens_to_ids("<s>")
-    
-    # Determine the length of labels (this will decide the truncation length)
-    label_length = len(example["labels"])
-
-    # Truncate `input_ids` to match the length of `labels`
-    filtered_input_ids = example["input_ids"][:label_length]
-    
-    # Adjust `attention_mask` to match the new length of `input_ids`
-    if "attention_mask" in example:
-        filtered_attention_mask = example["attention_mask"][:label_length]
-    else:
-        filtered_attention_mask = None
-
-    # Truncate `labels` if they exist in the dataset
-    if "labels" in example:
-        filtered_labels = example["labels"][:label_length]
-    else:
-        filtered_labels = None
-
-    # Replace with the truncated sequences
-    result = {
-        "input_ids": filtered_input_ids,
-    }
-    if filtered_attention_mask:
-        result["attention_mask"] = filtered_attention_mask
-    if filtered_labels:
-        result["labels"] = filtered_labels
-
-    return result
-
-
 tokenized_data = load_tokenized_datasets(isMath)
-tokenized_data = tokenized_data.map(truncate_all_fields, batched=False)
-print(tokenized_data["train"][0])  # Inspect the first training example
-print(tokenized_data["val"][0])    # Inspect the first validation example
-
 
 # Set pad token to eos token
 tokenizer.pad_token = tokenizer.eos_token
@@ -119,7 +85,7 @@ model, tokenized_data["train"], tokenized_data["val"] = accelerator.prepare(
     model, tokenized_data["train"], tokenized_data["val"]
 )
 
-output_dir = f"LoRA_FineTuned_{'Math' if isMath else 'Linguistic'}_R:{R}"
+output_dir = f"LoRAQuant_FineTuned_{'Math' if isMath else 'Linguistic'}_R:{R}"
 
 # Training arguments
 training_args = TrainingArguments(
@@ -132,7 +98,7 @@ training_args = TrainingArguments(
     logging_dir=f"{output_dir}/logs",
     logging_steps=50,
     save_total_limit=2,
-    bf16=torch.cuda.is_available(),
+    fp16=True,
     load_best_model_at_end=True,
     report_to="none",
     metric_for_best_model="eval_loss",

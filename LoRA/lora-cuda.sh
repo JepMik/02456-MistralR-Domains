@@ -7,7 +7,7 @@
 #BSUB -J LoRA
 
 ### Number of cores
-#BSUB -n 1
+#BSUB -n 2
 
 ### Cores must be on same host
 #BSUB -R "span[hosts=1]"
