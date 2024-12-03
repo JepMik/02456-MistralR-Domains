@@ -1,98 +1,85 @@
 # Imports
 import os
 import sys
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
-import os
-from huggingface_hub import login
-from datasets import load_dataset, load_from_disk, DatasetDict
-import pandas as pd
-import json
-from transformers.generation.stopping_criteria import StoppingCriteria, StoppingCriteriaList
-from alive_progress import alive_bar
-import logging
+from datasets import DatasetDict
 from peft import PeftModel
 
-data_path = "LoRA/tokenized_datasets"
-
-## Model dictionary
+# Paths and constants
 MODELPATH = "ModelMistral"
 PROCESSED_DIR = "LoRA/tokenized_datasets"
+LoRA_PATH = "LoRA_FineTuned_Math_R:4/final_model"
 
-lora_dict = {
-                "MathR1": "LoRA_FineTuned_Math_R:1/final_model",
-                "MathR4": "LoRA_FineTuned_Math_R:4/final_model",
-            }
-wDir = "Evaluation/Results"
-model = sys.argv[1]
-data_ptr = "meta_math_tokenized" if "Math" in model else "linguistic_tokenized"
+# Device configuration
+device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.cuda.empty_cache()
+torch.cuda.reset_peak_memory_stats()
 
-## Load the model and tokenizer from the local directory if available and not empty
+# Load the model and tokenizer
 if os.path.exists(MODELPATH) and os.listdir(MODELPATH):
-    print(f"Loading model from {MODELPATH}")
-    model = AutoModelForCausalLM.from_pretrained(MODELPATH)
+    print(f"Loading model from {MODELPATH}...")
+    base_model = AutoModelForCausalLM.from_pretrained(MODELPATH)
     tokenizer = AutoTokenizer.from_pretrained(MODELPATH)
 else:
-    raise Exception(f"Model {MODELPATH} not found in the local directory")
+    raise FileNotFoundError(f"Model {MODELPATH} not found or directory is empty.")
 
+# Load and apply LoRA layers
+if os.path.exists(LoRA_PATH):
+    print(f"Loading LoRA model from {LoRA_PATH}...")
+    model = PeftModel.from_pretrained(base_model, LoRA_PATH)
+else:
+    raise FileNotFoundError(f"LoRA model {LoRA_PATH} not found.")
 
-# Apply the LoRA layers to the base model
-model_with_lora = PeftModel.from_pretrained(model, lora_dict["MathR4"])
-
-# Move to device (e.g., GPU)
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model_with_lora.to(device)
+# Move the model to the appropriate device
+model.to(device)
+model.eval()
 
 # Load tokenized datasets
-if os.path.exists(f"{PROCESSED_DIR}/linguistic_tokenized") and os.path.exists(f"{PROCESSED_DIR}/meta_math_tokenized"):
-        print("Loading processed datasets from local disk...")
-        tokenized_data = DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math_tokenized")
+tokenized_data_path = os.path.join(PROCESSED_DIR, "meta_math_tokenized")
+if os.path.exists(tokenized_data_path):
+    print(f"Loading tokenized datasets from {tokenized_data_path}...")
+    tokenized_data = DatasetDict.load_from_disk(tokenized_data_path)
 else:
-    raise Exception("Tokenized datasets not found")
+    raise FileNotFoundError(f"Tokenized datasets not found at {tokenized_data_path}.")
 
-
-# Try and pass the first example to the model print outcome
+# Select a sample from the dataset
 sample = tokenized_data["test"][0]
 
-# Decode the input and run it through the model
+# Prepare input for the model
 print("Preparing input for the model...")
-# Convert input data into a dictionary
 inputs = {
     "input_ids": torch.tensor([sample["input_ids"]], device=device),
     "attention_mask": torch.tensor([sample["attention_mask"]], device=device),
 }
 
-print(sample)
+# Ensure tokenizer has a padding token
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
-# Generate model responses
-outputs = model_with_lora.generate(
+# Generate model response
+print("Generating response...")
+outputs = model.generate(
     **inputs,
     max_new_tokens=520,
     do_sample=True,
-    pad_token_id=tokenizer.eos_token_id,
-    temperature=0.2,
-    top_k=50,
-    top_p=0.02,
+    temperature=0.7,  # Adjust for randomness
+    top_k=50,         # Top-k sampling for diversity
+    top_p=0.9,        # Nucleus sampling
+    pad_token_id=tokenizer.pad_token_id,
     eos_token_id=tokenizer.eos_token_id,
 )
 
-# Ensure the tokenizer has a pad token to handle padding if needed
-tokenizer.pad_token = tokenizer.eos_token
-
-# Generate model responses for the entire batch
-outputs = model.generate(
-    **inputs, 
-    max_new_tokens=520,
-    do_sample=True,
-    pad_token_id=tokenizer.eos_token_id,
-    temperature=0.2,
+base_response = base_model.generate(
+    **inputs,
+    max_new_tokens=128,
+    temperature=0.7,
     top_k=50,
-    top_p=0.02,
-    eos_token_id=tokenizer.eos_token_id,
-                )
+    top_p=0.9
+)
+print(tokenizer.decode(base_response[0], skip_special_tokens=True))
 
-# Decode the responses for the batch
+# Decode and print the response
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print(f"Generated response: {response}")
-
-
+print("Generated Response:")
+print(response)

@@ -7,10 +7,13 @@
 #BSUB -J LoRA
 
 ### Number of cores
-#BSUB -n 2
+#BSUB -n 3
 
 ### Cores must be on same host
 #BSUB -R "span[hosts=1]"
+
+###
+#BSUB -R "select[gpu80gb]"
 
 ### -- specify that we need 4GB of memory per core/slot --
 #BSUB -R "rusage[mem=64GB]"
