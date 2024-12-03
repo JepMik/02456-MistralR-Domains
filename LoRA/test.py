@@ -10,5 +10,7 @@ dataset = load_from_disk("Baseline/processed_datasets/meta_math")
 
 tokenized_data = load_from_disk(TOKENIZED_DIR)
 
-print(f"Loaded tokenized data: {tokenized_data}")
-print(f"Example entry: {tokenized_data['train'][0]}")
+#print(f"Loaded tokenized data: {tokenized_data}")
+#print(f"Example entry: {tokenized_data['test'][0]}")
+
+print(dataset["test"][0])

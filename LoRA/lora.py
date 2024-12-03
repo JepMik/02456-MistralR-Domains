@@ -94,8 +94,8 @@ def truncate_all_fields(example):
 
 tokenized_data = load_tokenized_datasets(isMath)
 tokenized_data = tokenized_data.map(truncate_all_fields, batched=False)
-print(tokenized_data["train"][0])  # Inspect the first training example
-print(tokenized_data["val"][0])    # Inspect the first validation example
+#print(tokenized_data["train"][0])  # Inspect the first training example
+#print(tokenized_data["val"][0])    # Inspect the first validation example
 
 
 # Set pad token to eos token
@@ -119,7 +119,7 @@ model, tokenized_data["train"], tokenized_data["val"] = accelerator.prepare(
     model, tokenized_data["train"], tokenized_data["val"]
 )
 
-output_dir = f"LoRA_FineTuned_{'Math' if isMath else 'Linguistic'}_R:{R}"
+output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{R}"
 
 # Training arguments
 training_args = TrainingArguments(
@@ -164,7 +164,8 @@ print(f"Training time: {end - start} seconds")
 # Save training time, model, and tokenizer
 with open(f"{output_dir}/training_time.txt", "w") as f:
     f.write(f"Training time: {end - start} seconds")
+
 model.save_pretrained(f"{output_dir}/final_model")
-tokenizer.save_pretrained(f"{output_dir}/final_model")
+tokenizer.save_pretrained(f"{output_dir}/tokenizer")
 
 print(f"Model fine-tuned and saved to {output_dir}/final_model")
