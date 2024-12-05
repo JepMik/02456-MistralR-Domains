@@ -44,6 +44,6 @@ module load cuda/11.6
 cd $BLACKHOLE/02456-MistralR-Domains
 source $BLACKHOLE/env
 pip install -r requirements.txt
-python LoRA/newLora.py Math
+python LoRA/newLora.py Linguistic
 
 /appl/cuda/11.6.0/samples/bin/x86_64/linux/release/deviceQuery

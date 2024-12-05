@@ -9,31 +9,28 @@ from peft import PeftModel
 # Paths and constants
 MODELPATH = "ModelMistral"
 PROCESSED_DIR = "LoRA/tokenized_datasets"
-LoRA_PATH = "LoRA_FineTuned_Math_R:4/final_model"
+LoRA_PATH = "FineTuned_Math_R4_Test/lora_weights"
 
 # Device configuration
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.cuda.empty_cache()
 torch.cuda.reset_peak_memory_stats()
 
-# Load the model and tokenizer
+# Load the base model and tokenizer
 if os.path.exists(MODELPATH) and os.listdir(MODELPATH):
-    print(f"Loading model from {MODELPATH}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODELPATH)
+    print(f"Loading base model from {MODELPATH}...")
+    base_model = AutoModelForCausalLM.from_pretrained(MODELPATH).to(device)
     tokenizer = AutoTokenizer.from_pretrained(MODELPATH)
 else:
-    raise FileNotFoundError(f"Model {MODELPATH} not found or directory is empty.")
+    raise FileNotFoundError(f"Base model directory {MODELPATH} not found or is empty.")
 
 # Load and apply LoRA layers
 if os.path.exists(LoRA_PATH):
-    print(f"Loading LoRA model from {LoRA_PATH}...")
-    model = PeftModel.from_pretrained(base_model, LoRA_PATH)
+    print(f"Loading LoRA weights from {LoRA_PATH}...")
+    model = PeftModel.from_pretrained(base_model, LoRA_PATH).to(device)
+    model.eval()
 else:
-    raise FileNotFoundError(f"LoRA model {LoRA_PATH} not found.")
-
-# Move the model to the appropriate device
-model.to(device)
-model.eval()
+    raise FileNotFoundError(f"LoRA weights directory {LoRA_PATH} not found.")
 
 # Load tokenized datasets
 tokenized_data_path = os.path.join(PROCESSED_DIR, "meta_math_tokenized")
@@ -45,6 +42,8 @@ else:
 
 # Select a sample from the dataset
 sample = tokenized_data["test"][0]
+if "input_ids" not in sample or "attention_mask" not in sample:
+    raise ValueError("Sample data is missing `input_ids` or `attention_mask`.")
 
 # Prepare input for the model
 print("Preparing input for the model...")
@@ -57,29 +56,48 @@ inputs = {
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-# Generate model response
-print("Generating response...")
-outputs = model.generate(
+# Generate response using the LoRA-enhanced model
+print("Generating response with LoRA-enhanced model...")
+lora_outputs = model.generate(
     **inputs,
     max_new_tokens=520,
     do_sample=True,
-    temperature=0.7,  # Adjust for randomness
-    top_k=50,         # Top-k sampling for diversity
-    top_p=0.9,        # Nucleus sampling
+    temperature=0.7,
+    top_k=50,
+    top_p=0.9,
     pad_token_id=tokenizer.pad_token_id,
     eos_token_id=tokenizer.eos_token_id,
 )
 
-base_response = base_model.generate(
+# Generate response using the base model
+print("Generating response with the base model...")
+base_model = AutoModelForCausalLM.from_pretrained(MODELPATH).to(device)  # Reload base model to avoid LoRA interference
+base_outputs = base_model.generate(
     **inputs,
-    max_new_tokens=128,
+    max_new_tokens=520,
+    do_sample=True,
     temperature=0.7,
     top_k=50,
-    top_p=0.9
+    top_p=0.9,
+    pad_token_id=tokenizer.pad_token_id,
+    eos_token_id=tokenizer.eos_token_id,
 )
-print(tokenizer.decode(base_response[0], skip_special_tokens=True))
 
-# Decode and print the response
-response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print("Generated Response:")
-print(response)
+# Decode and print both responses
+lora_response = tokenizer.decode(lora_outputs[0], skip_special_tokens=True)
+base_response = tokenizer.decode(base_outputs[0], skip_special_tokens=True)
+
+print("\n=== Base Model Response ===")
+print(base_response)
+
+print("\n=== LoRA-Enhanced Model Response ===")
+print(lora_response)
+
+# Optional: Save both responses for comparison
+output_dir = "outputs"
+os.makedirs(output_dir, exist_ok=True)
+with open(os.path.join(output_dir, "base_model_response.txt"), "w") as f:
+    f.write(base_response)
+
+with open(os.path.join(output_dir, "lora_model_response.txt"), "w") as f:
+    f.write(lora_response)

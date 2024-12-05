@@ -43,10 +43,10 @@ def load_tokenized_datasets(IsMath: bool):
 def truncate_all_fields(example, tokenizer):
     eos_token_id = tokenizer.eos_token_id
     special_token_id = tokenizer.convert_tokens_to_ids("<s>")
-        
+
     label_length = len(example["labels"])
     filtered_input_ids = example["input_ids"][:label_length]
-        
+
     if "attention_mask" in example:
         filtered_attention_mask = example["attention_mask"][:label_length]
     else:
@@ -86,6 +86,7 @@ def load_model():
         tokenizer.save_pretrained(MODELPATH)
     return model, tokenizer
 
+print("Loading model and tokenizer...")
 
 saved_model, saved_tokenizer = load_model()
 tokenized_data = load_tokenized_datasets(isMath)
@@ -97,18 +98,25 @@ tokenized_data = tokenized_data.map(
 
 saved_tokenized_data = tokenized_data
 
+print("Starting freezing...")
+# Freeze the base model weights
+for param in saved_model.parameters():
+    param.requires_grad = False
 
+print("Starting fine-tuning...")
 for r in R:
     tokenizer = saved_tokenizer
     model = saved_model
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     print(f"Fine-tuning with R={r}...")
-    
-    tokenized_data = saved_tokenized_data
-    
 
+    tokenized_data = saved_tokenized_data
     tokenizer.pad_token = tokenizer.eos_token
+
+    # List to store losses for plotting later
+    train_losses = []
+    eval_losses = []
 
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
@@ -158,27 +166,14 @@ for r in R:
 
     print("Starting training...")
     start = time.time()
-    training_metrics = trainer.train()
+    trainer.train()
     end = time.time()
     print(f"Training time: {end - start} seconds")
 
+    # Save only the LoRA weights
     lora_output_dir = f"{output_dir}/lora_weights"
     model.save_pretrained(lora_output_dir)
-
     print(f"LoRA weights saved to {lora_output_dir}")
 
-    # Generate loss plot
-    train_loss = [log["loss"] for log in training_metrics.training_logs]
-    eval_loss = [log["eval_loss"] for log in training_metrics.training_logs if "eval_loss" in log]
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(len(train_loss)), train_loss, label="Training Loss")
-    plt.plot(range(len(eval_loss)), eval_loss, label="Validation Loss")
-    plt.title(f"Training and Validation Loss for R={r}")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.grid()
-    plt.savefig(f"{output_dir}/loss_plot.png")
-    plt.close()
-    print(f"Loss plot saved to {output_dir}/loss_plot.png")
+  
+#FineTuned_Linguistic_R1_Test/loss_plot.png

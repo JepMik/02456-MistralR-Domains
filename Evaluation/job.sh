@@ -1,13 +1,15 @@
 #!/bin/sh 
 
 ### Queue specification 
-#BSUB -q hpc
+#BSUB -q gpuv100
 
 ### Name of job
 #BSUB -J rEval
 
 ### Number of cores
 #BSUB -n 1
+
+#BSUB -R "select[gpu32gb]"
 
 ### Cores must be on same host
 #BSUB -R "span[hosts=1]"
