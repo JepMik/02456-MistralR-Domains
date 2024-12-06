@@ -28,14 +28,16 @@ else:
     print(f"Saving tokenizer to {MODELPATH}...")
     tokenizer.save_pretrained(MODELPATH)
 
+tokenizer.padding_side = "right"
+
 # Function to load processed datasets
 def load_processed_datasets(isMath: bool):
     if os.path.exists(f"{PROCESSED_DIR}/linguistic") and os.path.exists(f"{PROCESSED_DIR}/meta_math"):
         print("Loading processed datasets from local disk...")
         if isMath:
-            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math_tokenized")
+            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math")
         else:
-            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/linguistic_tokenized")
+            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/linguistic")
     else:
         raise FileNotFoundError("Processed datasets not found in the specified directory.")
 

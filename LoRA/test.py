@@ -1,10 +1,10 @@
 ## Load tokenized data
 from datasets import load_from_disk
 
-TOKENIZED_DIR = "LoRA/tokenized_datasets/meta_math_tokenized"
+TOKENIZED_DIR = "LoRA/new/tokenized_datasets/meta_math_tokenized"
 
 # Load tokenized data
-dataset = load_from_disk("Baseline/processed_datasets/meta_math")
+dataset = load_from_disk(TOKENIZED_DIR)
 #print(f"Loaded dataset: {dataset}")
 #print(f"Example entry: {dataset['train'][0]}")
 

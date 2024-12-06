@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 MODELPATH = "ModelMistral"
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
 PROCESSED_DIR = "LoRA/tokenized_datasets"
-R = [1, 4, 8, 16]
+R = [4, 8, 16, 32]
 
 # Initialize the Accelerator
 accelerator = Accelerator()
@@ -112,19 +112,16 @@ for r in R:
     print(f"Fine-tuning with R={r}...")
 
     tokenized_data = saved_tokenized_data
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = "<pad>"
 
-    # List to store losses for plotting later
-    train_losses = []
-    eval_losses = []
 
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         inference_mode=False,
         r=r,
         lora_alpha=r * 2,
-        lora_dropout=0.05,
-        target_modules=["q_proj", "v_proj"]
+        lora_dropout=0.1,
+        target_modules=["q_proj", "v_proj","o_proj","gate_proj"]
     )
 
     model = get_peft_model(model, lora_config)
@@ -133,14 +130,15 @@ for r in R:
         model, tokenized_data["train"], tokenized_data["val"]
     )
 
-    output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{r}_Test"
+    output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{r}"
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        learning_rate=2e-4,
-        per_device_train_batch_size=1,
+        eval_strategy="steps",
+        eval_steps=500,
+        save_strategy="steps",
+        learning_rate=1e-4,
+        per_device_train_batch_size=4,
         num_train_epochs=10,
         logging_dir=f"{output_dir}/logs",
         logging_steps=50,
@@ -171,7 +169,7 @@ for r in R:
     print(f"Training time: {end - start} seconds")
 
     # Save only the LoRA weights
-    lora_output_dir = f"{output_dir}/lora_weights"
+    lora_output_dir = f"New/{output_dir}/lora_weights"
     model.save_pretrained(lora_output_dir)
     print(f"LoRA weights saved to {lora_output_dir}")
 

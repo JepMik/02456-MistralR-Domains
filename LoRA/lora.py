@@ -10,12 +10,13 @@ import time
 import json
 import os
 import sys
+import matplotlib.pyplot as plt
 
 # Constants
 MODELPATH = "ModelMistral"
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
-PROCESSED_DIR = "LoRA/tokenized_datasets"
-R = [1, 4, 8, 16]
+PROCESSED_DIR = "LoRA/Working/tokenized_datasets"
+R = [4]
 
 # Initialize the Accelerator
 accelerator = Accelerator()
@@ -26,7 +27,6 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 arg = sys.argv[1]
 isMath = arg == "Math"
-
 
 # Load tokenized datasets
 def load_tokenized_datasets(IsMath: bool):
@@ -40,53 +40,7 @@ def load_tokenized_datasets(IsMath: bool):
     else:
         raise Exception("Tokenized datasets not found")
 
-def truncate_all_fields(example):
-    # Token IDs for <s> and eos_token
-    eos_token_id = tokenizer.eos_token_id
-    special_token_id = tokenizer.convert_tokens_to_ids("<s>")
-        
-    # Determine the length of labels (this will decide the truncation length)
-    label_length = len(example["labels"])
-
-    # Truncate `input_ids` to match the length of `labels`
-    filtered_input_ids = example["input_ids"][:label_length]
-        
-    # Adjust `attention_mask` to match the new length of `input_ids`
-    if "attention_mask" in example:
-        filtered_attention_mask = example["attention_mask"][:label_length]
-    else:
-        filtered_attention_mask = None
-
-    # Truncate `labels` if they exist in the dataset
-    if "labels" in example:
-        filtered_labels = example["labels"][:label_length]
-    else:
-        filtered_labels = None
-
-    # Replace with the truncated sequences
-    result = {
-        "input_ids": filtered_input_ids,
-    }
-    if filtered_attention_mask:
-        result["attention_mask"] = filtered_attention_mask
-    if filtered_labels:
-        result["labels"] = filtered_labels
-
-    return result
-
-
-tokenized_data = load_tokenized_datasets(isMath)
-tokenized_data = tokenized_data.map(truncate_all_fields, batched=False)
-
-saved_tokenized_data = tokenized_data
-
-for r in R:
-    torch.cuda.empty_cache()
-    torch.cuda.reset_peak_memory_stats()
-    print(f"Fine-tuning with R={r}...")
-    
-    tokenized_data = saved_tokenized_data
-    # Load the model and tokenizer
+def load_model():
     if os.path.exists(MODELPATH) and os.listdir(MODELPATH):
         print(f"Loading model from {MODELPATH}...")
         model = AutoModelForCausalLM.from_pretrained(MODELPATH)
@@ -103,37 +57,56 @@ for r in R:
         print(f"Saving model to {MODELPATH}...")
         model.save_pretrained(MODELPATH)
         tokenizer.save_pretrained(MODELPATH)
+    return model, tokenizer
 
-    # Set pad token to eos token
+print("Loading model and tokenizer...")
+
+model, saved_tokenizer = load_model()
+tokenized_data = load_tokenized_datasets(isMath)
+
+#saved_tokenized_data = tokenized_data
+
+print("Starting freezing...")
+# Freeze the base model weights
+for param in model.parameters():
+    param.requires_grad = False
+
+print("Starting fine-tuning...")
+for r in R:
+    tokenizer = saved_tokenizer
+    model = model
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    print(f"Fine-tuning with R={r}...")
+
+    #tokenized_data = saved_tokenized_data
     tokenizer.pad_token = tokenizer.eos_token
 
-    # LoRA configuration
+
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         inference_mode=False,
         r=r,
         lora_alpha=r * 2,
-        lora_dropout=0.05,
-        target_modules=["q_proj", "v_proj"]
+        lora_dropout=0.1,
+        target_modules=["q_proj", "v_proj","o_proj","gate_proj"]
     )
 
-    # Prepare the model for LoRA
     model = get_peft_model(model, lora_config)
 
-    # Prepare the model and datasets with the Accelerator
     model, tokenized_data["train"], tokenized_data["val"] = accelerator.prepare(
         model, tokenized_data["train"], tokenized_data["val"]
     )
 
     output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{r}"
 
-    # Training arguments
     training_args = TrainingArguments(
         output_dir=output_dir,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        learning_rate=2e-4,
-        per_device_train_batch_size=1,  # Adjust based on available GPU memory
+        eval_strategy="steps",
+        eval_steps=500,
+        save_strategy="steps",
+        learning_rate=1e-4,
+        per_device_train_batch_size=4,
         num_train_epochs=10,
         logging_dir=f"{output_dir}/logs",
         logging_steps=50,
@@ -146,10 +119,8 @@ for r in R:
         gradient_accumulation_steps=8,
     )
 
-    # Define early stopping callback
     early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=2)
 
-    # Trainer setup
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -161,17 +132,14 @@ for r in R:
 
     print("Starting training...")
     start = time.time()
-
-    # Train and save the model
     trainer.train()
     end = time.time()
     print(f"Training time: {end - start} seconds")
 
-    # Save training time, model, and tokenizer
-    with open(f"{output_dir}/training_time.txt", "w") as f:
-        f.write(f"Training time: {end - start} seconds")
+    # Save only the LoRA weights
+    lora_output_dir = f"New_test/{output_dir}/lora_weights"
+    model.save_pretrained(lora_output_dir)
+    print(f"LoRA weights saved to {lora_output_dir}")
 
-    model.save_pretrained(f"{output_dir}/final_model")
-    tokenizer.save_pretrained(f"{output_dir}/tokenizer")
-
-    print(f"Model fine-tuned and saved to {output_dir}/final_model")
+  
+#FineTuned_Linguistic_R1_Test/loss_plot.png
