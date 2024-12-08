@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 MODELPATH = "ModelMistral"
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
 PROCESSED_DIR = "LoRA/Working/tokenized_datasets"
-R = [4]
+R = [1, 4, 8, 16]
 
 # Initialize the Accelerator
 accelerator = Accelerator()
@@ -85,9 +85,9 @@ for r in R:
 
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
-        inference_mode=False,
+        inference_mode=False,   
         r=r,
-        lora_alpha=r * 2,
+        lora_alpha=r,
         lora_dropout=0.1,
         target_modules=["q_proj", "v_proj","o_proj","gate_proj"]
     )
@@ -102,14 +102,13 @@ for r in R:
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        eval_strategy="steps",
-        eval_steps=500,
-        save_strategy="steps",
+        eval_strategy="epoch",
+        save_strategy="epoch",
         learning_rate=1e-4,
         per_device_train_batch_size=4,
         num_train_epochs=10,
         logging_dir=f"{output_dir}/logs",
-        logging_steps=50,
+        logging_steps=100,
         save_total_limit=2,
         bf16=torch.cuda.is_available(),
         load_best_model_at_end=True,
@@ -137,9 +136,6 @@ for r in R:
     print(f"Training time: {end - start} seconds")
 
     # Save only the LoRA weights
-    lora_output_dir = f"New_test/{output_dir}/lora_weights"
+    lora_output_dir = f"LoraWeights/{output_dir}/lora_weights"
     model.save_pretrained(lora_output_dir)
     print(f"LoRA weights saved to {lora_output_dir}")
-
-  
-#FineTuned_Linguistic_R1_Test/loss_plot.png

@@ -26,7 +26,7 @@ print("Script started...")
 MODELPATH = "ModelMistral"
 PROCESSED_DIR = "LoRA/tokenized_datasets"
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
-LoRA_PATH = "New/FineTuned_Math_R8/lora_weights"
+LoRA_PATH = "New_test/FineTuned_Math_R4/lora_weights"
 
 # Device configuration
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,87 +46,76 @@ else:
     print(f"Saving model to {MODELPATH}...")
     base_model.save_pretrained(MODELPATH)
     tokenizer.save_pretrained(MODELPATH)
-    
+
 tokenized_data_path = os.path.join(PROCESSED_DIR, "meta_math_tokenized")
 if os.path.exists(tokenized_data_path):
     print(f"Loading tokenized datasets from {tokenized_data_path}...")
     tokenized_data = DatasetDict.load_from_disk(tokenized_data_path)
 else:
     raise FileNotFoundError(f"Tokenized datasets not found at {tokenized_data_path}.")
-
-print("Tokenized data test.")
-sample_input = "[INST] Provide the answer to the following question: Milly is trying to determine the duration of her study session... [/INST]"
-tokenizedt = tokenizer(sample_input, return_tensors="pt")
-print(tokenizedt)
-
-# Select a sample from the dataset
-sample = tokenized_data["test"][0]
-print("Sample data:")
-print(sample)
-
-if "input_ids" not in sample or "attention_mask" not in sample:
-    raise ValueError("Sample data is missing `input_ids` or `attention_mask`.")
-
-# Prepare input for the model
-print("Preparing input for the model...")
-inputs = {
-    "input_ids": torch.tensor([sample["input_ids"]], device=device),
-    "attention_mask": torch.tensor([sample["attention_mask"]], device=device),
-}
-
-print("Input prepared.")
-print(inputs)
-
-# Generate response using the base model
-print("Generating response with the base model...") # Reload base model to avoid LoRA interference
-base_outputs = base_model.generate(
-    **inputs,
-    max_new_tokens=520,
-    do_sample=True,
-    temperature=0.2,
-    top_k=50,
-    top_p=0.02,
-    pad_token_id=tokenizer.pad_token_id,
-    eos_token_id=tokenizer.eos_token_id,
-)
-
-# Load and apply LoRA layers
-if os.path.exists(LoRA_PATH):
-    print(f"Loading LoRA weights from {LoRA_PATH}...")
-    model = PeftModel.from_pretrained(base_model, LoRA_PATH).to(device)
-    model.eval()
-else:
-    raise FileNotFoundError(f"LoRA weights directory {LoRA_PATH} not found.")
-
-
 # Ensure tokenizer has a padding token
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-# Generate response using the LoRA-enhanced model
-print("Generating response with LoRA-enhanced model...")
-lora_outputs = model.generate(
-    **inputs,
-    max_new_tokens=520,
-    do_sample=True,
-    temperature=0.2,
-    top_k=50,
-    top_p=0.02,
-    pad_token_id=tokenizer.pad_token_id,
-    eos_token_id=tokenizer.eos_token_id,
-)
 
+questions = [
+    "[INST]\n Provide the answer to the following question: \nIf the eldest sibling is currently 20 years old and the three siblings are born 5 years apart, what will be the total of their ages 10 years from now?\n[/INST]",
+    "[INST] Alice has 8 apples and wants to divide them equally among her 4 friends. How many apples does each person get [/INST]",
+    "[INST] If i can sleep 8 hours, how many hours are left in the day for studying? [/INST]"
+]
+# Loop through the questions
+for idx, q in enumerate(questions, start=1):
+    print(f"\nProcessing Question {idx}:\n{q}")
 
+    # Tokenize the question
+    inputs = tokenizer(q, return_tensors="pt", padding=True, truncation=True)
+    inputs = {key: value.to(device) for key, value in inputs.items()}
 
-# Decode and print both responses
-lora_response = tokenizer.decode(lora_outputs[0], skip_special_tokens=True)
-base_response = tokenizer.decode(base_outputs[0], skip_special_tokens=True)
+    # Base model responses
+    print("\nGenerating 3 responses with the Base Model...")
+    base_responses = []
+    for _ in range(3):
+        base_outputs = base_model.generate(
+            **inputs,
+            max_new_tokens=520,
+            do_sample=True,
+            temperature=0.2,
+            top_k=50,
+            top_p=0.02,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+        base_responses.append(tokenizer.decode(base_outputs[0], skip_special_tokens=True))
 
-print("\n=== Base Model Response ===")
-print(base_response)
+    # Apply LoRA weights
+    print(f"\nLoading LoRA weights from {LoRA_PATH}...")
+    if os.path.exists(LoRA_PATH):
+        model = PeftModel.from_pretrained(base_model, LoRA_PATH).to(device)
+        model.eval()
+    else:
+        raise FileNotFoundError(f"LoRA weights directory {LoRA_PATH} not found.")
 
-print("\n=== LoRA-Enhanced Model Response ===")
-print(lora_response)
+    # LoRA-enhanced model responses
+    print("\nGenerating 3 responses with the LoRA-Enhanced Model...")
+    lora_responses = []
+    for _ in range(3):
+        lora_outputs = model.generate(
+            **inputs,
+            max_new_tokens=520,
+            do_sample=True,
+            temperature=0.2,
+            top_k=50,
+            top_p=0.02,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+        lora_responses.append(tokenizer.decode(lora_outputs[0], skip_special_tokens=True))
 
-# Optional: Save both responses for comparison
-output_dir = "outputs"
+    # Print and save responses
+    print("\n=== Base Model Responses ===")
+    for i, response in enumerate(base_responses, start=1):
+        print(f"Response {i}: {response}")
+
+    print("\n=== LoRA-Enhanced Model Responses ===")
+    for i, response in enumerate(lora_responses, start=1):
+        print(f"Response {i}: {response}")
