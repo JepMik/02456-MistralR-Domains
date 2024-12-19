@@ -1,14 +1,23 @@
+# This script generates answers to prompts with different versions of LoRA-enhanced models.
+# Saves responses and ground truths to a file for evaluation.
+
 # Imports
-import os
 import sys
+import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from datasets import DatasetDict
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 from huggingface_hub import login
 import pandas as pd
+
+# Constants
+MODELPATH = "ModelMistral"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+PROCESSED_DIR = "Baseline/processed_datasets"
+BATCH_SIZE = 8
+MAX_NEW_TOKENS = 520
+MODEL_NAME = "mistralai/Mistral-7B-v0.1"
 
 # Used in HPC
 userToken = os.getenv("HUGGINGFACE_HUB_TOKEN")
@@ -18,25 +27,21 @@ if userToken:
     print("Token found.")
     login(token=userToken)
 
-print("Script started...")
+
+# Data configuration
+data_dict = {
+    "Math": [ "FineTuned_Math_R1","FineTuned_Math_R4","FineTuned_Math_R8", "FineTuned_Math_R16"],
+    "Linguistic": ["FineTuned_Linguistic_R1","FineTuned_Linguistic_R4", "FineTuned_Linguistic_R8", "FineTuned_Linguistic_R16"],
+    "CrossDomain": ["FineTuned_Math_R1", "FineTuned_Linguistic_R1"]
+}
 
 
-
-# Paths and constants
-MODELPATH = "ModelMistral"
-PROCESSED_DIR = "LoRA/tokenized_datasets"
-MODEL_NAME = "mistralai/Mistral-7B-v0.1"
-LoRA_PATH = "New_test/FineTuned_Math_R4/lora_weights"
-
-# Device configuration
-device = "cuda" if torch.cuda.is_available() else "cpu"
-torch.cuda.empty_cache()
-torch.cuda.reset_peak_memory_stats()
+data_chosen = sys.argv[1]
 
 # Load the base model and tokenizer
 if os.path.exists(MODELPATH) and os.listdir(MODELPATH):
     print(f"Loading base model from {MODELPATH}...")
-    base_model = AutoModelForCausalLM.from_pretrained(MODELPATH).to(device)
+    base_model = AutoModelForCausalLM.from_pretrained(MODELPATH).to(DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(MODELPATH)
 else:
     print(f"Downloading model from {MODEL_NAME}...")
@@ -47,75 +52,194 @@ else:
     base_model.save_pretrained(MODELPATH)
     tokenizer.save_pretrained(MODELPATH)
 
-tokenized_data_path = os.path.join(PROCESSED_DIR, "meta_math_tokenized")
-if os.path.exists(tokenized_data_path):
-    print(f"Loading tokenized datasets from {tokenized_data_path}...")
-    tokenized_data = DatasetDict.load_from_disk(tokenized_data_path)
-else:
-    raise FileNotFoundError(f"Tokenized datasets not found at {tokenized_data_path}.")
-# Ensure tokenizer has a padding token
+print("Script started...")
+
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-
-questions = [
-    "[INST]\n Provide the answer to the following question: \nIf the eldest sibling is currently 20 years old and the three siblings are born 5 years apart, what will be the total of their ages 10 years from now?\n[/INST]",
-    "[INST] Alice has 8 apples and wants to divide them equally among her 4 friends. How many apples does each person get [/INST]",
-    "[INST] If i can sleep 8 hours, how many hours are left in the day for studying? [/INST]"
-]
-# Loop through the questions
-for idx, q in enumerate(questions, start=1):
-    print(f"\nProcessing Question {idx}:\n{q}")
-
-    # Tokenize the question
-    inputs = tokenizer(q, return_tensors="pt", padding=True, truncation=True)
-    inputs = {key: value.to(device) for key, value in inputs.items()}
-
-    # Base model responses
-    print("\nGenerating 3 responses with the Base Model...")
-    base_responses = []
-    for _ in range(3):
-        base_outputs = base_model.generate(
-            **inputs,
-            max_new_tokens=520,
-            do_sample=True,
-            temperature=0.2,
-            top_k=50,
-            top_p=0.02,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-        base_responses.append(tokenizer.decode(base_outputs[0], skip_special_tokens=True))
-
-    # Apply LoRA weights
-    print(f"\nLoading LoRA weights from {LoRA_PATH}...")
-    if os.path.exists(LoRA_PATH):
-        model = PeftModel.from_pretrained(base_model, LoRA_PATH).to(device)
-        model.eval()
+# Function to load processed datasets
+def load_processed_datasets(isMath: bool):
+    if os.path.exists(f"{PROCESSED_DIR}/linguistic") and os.path.exists(f"{PROCESSED_DIR}/meta_math"):
+        print("Loading processed datasets from local disk...")
+        if isMath:
+            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math")
+        else:
+            return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/linguistic")
     else:
-        raise FileNotFoundError(f"LoRA weights directory {LoRA_PATH} not found.")
+        raise FileNotFoundError("Processed datasets not found in the specified directory.")
+    
+def load_all():
+    return DatasetDict.load_from_disk(f"{PROCESSED_DIR}/meta_math")["test"], DatasetDict.load_from_disk(f"{PROCESSED_DIR}/linguistic")["test"]
 
-    # LoRA-enhanced model responses
-    print("\nGenerating 3 responses with the LoRA-Enhanced Model...")
-    lora_responses = []
-    for _ in range(3):
-        lora_outputs = model.generate(
-            **inputs,
-            max_new_tokens=520,
-            do_sample=True,
-            temperature=0.2,
-            top_k=50,
-            top_p=0.02,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-        lora_responses.append(tokenizer.decode(lora_outputs[0], skip_special_tokens=True))
+# Load the appropriate dataset
+if data_chosen == "Math" or data_chosen == "Linguistic":
+    dataset = load_processed_datasets(data_chosen == "Math")["test"]
+    promptKey = "query" if data_chosen == "Math" else "paragraph_generation_prompt"
+    groundTruthKey = "response" if data_chosen == "Math" else "claude_summary"
+else:
+    math_dataset, ling_dataset = load_all()
+    crossDict = {"Math": {"prmptKey": "query", "grndTruthKey": "response"}, 
+                 "Linguistic": {"prmptKey": "paragraph_generation_prompt", 
+                                "grndTruthKey": "claude_summary"}}
 
-    # Print and save responses
-    print("\n=== Base Model Responses ===")
-    for i, response in enumerate(base_responses, start=1):
-        print(f"Response {i}: {response}")
 
-    print("\n=== LoRA-Enhanced Model Responses ===")
-    for i, response in enumerate(lora_responses, start=1):
-        print(f"Response {i}: {response}")
+
+result = {}
+# Generate responses for each LoRA version
+for version in data_dict[data_chosen]:
+    print(f"Loading LoRA model: {version}...")
+    if os.path.exists(f"LoraWeights/{version}/lora_weights"):
+        continue
+    LoRA_PATH = f"LoraWeights/{version}/lora_weights"
+    lora_model = PeftModel.from_pretrained(base_model, LoRA_PATH).to(DEVICE)
+    lora_model.eval()
+
+    # Results key
+    result[version] = {}
+
+    # Batch processing
+    batch_prompts = []
+    batch_ground_truths = []
+    batch_ids = []
+    print(f"Generating responses for {version}...")
+
+    for i, example in enumerate(dataset):
+        print(f"Processing example {i + 1}/{len(dataset)}...", end="\r")
+        # Prepare inputs
+        input_text = example[promptKey]
+        ground_truth = example[groundTruthKey]
+
+        batch_prompts.append(input_text)
+        batch_ground_truths.append(ground_truth)
+        batch_ids.append(i)
+
+        # Process when the batch is full or at the end
+        if len(batch_prompts) == BATCH_SIZE or i == len(dataset) - 1:
+            # Tokenize the batch
+            inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True, max_length=524).to(DEVICE)
+                
+            # Calculate max_new_tokens dynamically
+            max_input_length = inputs['input_ids'].shape[1]
+            max_length = 1024  # Model's maximum sequence length
+            remaining_tokens = max_length - max_input_length
+            adjusted_max_new_tokens = min(remaining_tokens, MAX_NEW_TOKENS)
+
+            # Generate responses
+            with torch.no_grad():
+                outputs = lora_model.generate(
+                    **inputs,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    temperature=0.2,
+                    top_k=50,
+                    top_p=0.02,
+                    eos_token_id=tokenizer.eos_token_id,
+                    )
+
+            # Decode and store responses
+            batch_responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+            for idx, response in enumerate(batch_responses):
+                result[version][batch_prompts[idx]] = {
+                    "response": response,
+                    "ground_truth": batch_ground_truths[idx]
+                }
+
+            # Reset batch
+            batch_prompts = []
+            batch_ground_truths = []
+            batch_ids = []
+
+    # Delete the LoRA model to free memory
+    del lora_model
+    torch.cuda.empty_cache()
+
+
+def CrossDomainResponses(base_model, dataset, promptKey, groundTruthKey, version):
+    result = {}
+   
+    print(f"Loading LoRA model: {version}...")
+    LoRA_PATH = f"LoraWeights/{version}/lora_weights"
+    lora_model = PeftModel.from_pretrained(base_model, LoRA_PATH).to(DEVICE)
+    lora_model.eval()
+
+    # Batch processing
+    batch_prompts = []
+    batch_ground_truths = []
+    batch_ids = []
+    print(f"Generating responses for {version}...")
+
+    for i, example in enumerate(dataset):
+        print(f"Processing example {i + 1}/{len(dataset)}...", end="\r")
+        # Prepare inputs
+        input_text = example[promptKey]
+        ground_truth = example[groundTruthKey]
+
+        batch_prompts.append(input_text)
+        batch_ground_truths.append(ground_truth)
+        batch_ids.append(i)
+
+        # Process when the batch is full or at the end
+        if len(batch_prompts) == BATCH_SIZE or i == len(dataset) - 1:
+            # Tokenize the batch
+            inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True, max_length=524).to(DEVICE)
+
+            # Calculate max_new_tokens dynamically
+            max_input_length = inputs['input_ids'].shape[1]
+            max_length = 1024  # Model's maximum sequence length
+            remaining_tokens = max_length - max_input_length
+            adjusted_max_new_tokens = min(remaining_tokens, MAX_NEW_TOKENS)
+
+            # Generate responses
+            with torch.no_grad():
+                outputs = lora_model.generate(
+                    **inputs,
+                    max_new_tokens=adjusted_max_new_tokens,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    temperature=0.2,
+                    top_k=50,
+                    top_p=0.02,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
+
+            # Decode and store responses
+            batch_responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+            for idx, response in enumerate(batch_responses):
+                result[batch_prompts[idx]] = {
+                    "response": response,
+                    "ground_truth": batch_ground_truths[idx]
+                }
+
+            # Reset batch
+            batch_prompts = []
+            batch_ground_truths = []
+            batch_ids = []
+
+        # Delete the LoRA model to free memory
+    del lora_model
+    torch.cuda.empty_cache()
+    return result
+
+print(f"Generating responses started..")
+
+""""
+if data_chosen == "CrossDomain":
+    result = {}
+    for version in data_dict[data_chosen]:
+        print(f"Loading LoRA model: {version}...")
+        isMath = True if "Math" in version else False
+        promptKey = crossDict["Linguistic"]["prmptKey"] if isMath else crossDict["Math"]["prmptKey"]
+        groundTruthKey = crossDict["Linguistic"]["grndTruthKey"] if isMath else crossDict["Math"]["grndTruthKey"] 
+        # Cross domain responses
+        dataset = ling_dataset if isMath else math_dataset
+        result[version] = CrossDomainResponses(base_model,dataset,promptKey,groundTruthKey, version)
+else:
+    result = math_ling_gen_responses(base_model,data_chosen,data_dict,dataset,promptKey,groundTruthKey)
+"""
+
+
+# Save the results to a file json file
+output_path = f"Results/{data_chosen}1_4_8_16_results.json"
+pd.DataFrame(result).to_json(output_path)
+print(f"Results saved to {output_path}.")

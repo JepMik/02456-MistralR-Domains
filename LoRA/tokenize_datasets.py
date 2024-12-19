@@ -1,5 +1,3 @@
-# Script to tokenize datasets and save them locally for reuse
-
 # Imports
 import torch
 from transformers import AutoTokenizer
@@ -11,7 +9,7 @@ import sys
 MODELPATH = "ModelMistral"
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
 PROCESSED_DIR = "Baseline/processed_datasets"
-TOKENIZED_DIR = "LoRA/tokenized_datasets"
+TOKENIZED_DIR = "LoRA/Working/tokenized_datasets"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Command-line argument to distinguish between math and linguistic datasets
@@ -48,24 +46,22 @@ print(f"Loaded dataset: {processed_data}")
 # Function to tokenize a single example
 def tokenize(prompt, isMath):
     if isMath:
-        inputs = tokenizer(
-            prompt["query"], max_length=512, truncation=True, padding="max_length"
-        )
-        outputs = tokenizer(
-            prompt["response"], max_length=512, truncation=True, padding="max_length"
-        )
+        # Concatenate query and response for math dataset
+        input_text = prompt["query"] + "\n -->" + prompt["response"]
+
     else:
-        inputs = tokenizer(
-            prompt["paragraph_generation_prompt"], max_length=512, truncation=True, padding="max_length"
-        )
-        outputs = tokenizer(
-            prompt["claude_summary"], max_length=512, truncation=True, padding="max_length"
-        )
+        # Concatenate query and response for linguistic dataset
+        input_text = prompt["paragraph_generation_prompt"] + " \n -->" + prompt["claude_summary"]
+
+
+    # Tokenize the concatenated input
+    inputs = tokenizer(input_text, max_length=1024, truncation=True, padding="max_length")
+    
     return {
-        "input_ids": inputs["input_ids"], # input_ids: The token indices in the vocabulary
-        "attention_mask": inputs["attention_mask"], # attention_mask: The attention mask that indicates the valid values for input
-        "labels": outputs["input_ids"], # labels: The token indices in the vocabulary
-    } # Used for computing the loss during training
+        "input_ids": inputs["input_ids"], # The tokenized query and response
+        "attention_mask": inputs["attention_mask"], # Attention mask for the input
+        "labels": inputs["input_ids"], # The labels (response) for training
+    }
 
 # Function to tokenize datasets
 def tokenize_data(dataDict, isMath):
@@ -77,7 +73,6 @@ def tokenize_data(dataDict, isMath):
 # Tokenize data
 tokenizer.pad_token = tokenizer.eos_token
 tokenized_data = tokenize_data(processed_data, isMath)
-
 
 # Save tokenized data
 save_path = f"{TOKENIZED_DIR}/meta_math_tokenized" if isMath else f"{TOKENIZED_DIR}/linguistic_tokenized"

@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 MODELPATH = "ModelMistral"
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
 PROCESSED_DIR = "LoRA/Working/tokenized_datasets"
-R = [1, 4, 8, 16]
 
 # Initialize the Accelerator
 accelerator = Accelerator()
@@ -26,6 +25,8 @@ DEVICE = accelerator.device
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 arg = sys.argv[1]
+R = int(sys.argv[2]) # Number of LoRA layers
+
 isMath = arg == "Math"
 
 # Load tokenized datasets
@@ -61,7 +62,7 @@ def load_model():
 
 print("Loading model and tokenizer...")
 
-model, saved_tokenizer = load_model()
+model, tokenizer = load_model()
 tokenized_data = load_tokenized_datasets(isMath)
 
 #saved_tokenized_data = tokenized_data
@@ -72,70 +73,67 @@ for param in model.parameters():
     param.requires_grad = False
 
 print("Starting fine-tuning...")
-for r in R:
-    tokenizer = saved_tokenizer
-    model = model
-    torch.cuda.empty_cache()
-    torch.cuda.reset_peak_memory_stats()
-    print(f"Fine-tuning with R={r}...")
 
-    #tokenized_data = saved_tokenized_data
-    tokenizer.pad_token = tokenizer.eos_token
+print(f"Fine-tuning with R={R}...")
+
+#tokenized_data = saved_tokenized_data
+tokenizer.pad_token = tokenizer.eos_token
 
 
-    lora_config = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
-        inference_mode=False,   
-        r=r,
-        lora_alpha=r,
-        lora_dropout=0.1,
-        target_modules=["q_proj", "v_proj","o_proj","gate_proj"]
-    )
+lora_config = LoraConfig(
+    task_type=TaskType.CAUSAL_LM,
+    inference_mode=False,   
+    r=R,
+    lora_alpha=R,
+    lora_dropout=0.1,
+    target_modules=["q_proj", "v_proj","o_proj","gate_proj"]
+)
 
-    model = get_peft_model(model, lora_config)
+model = get_peft_model(model, lora_config)
 
-    model, tokenized_data["train"], tokenized_data["val"] = accelerator.prepare(
-        model, tokenized_data["train"], tokenized_data["val"]
-    )
+model, tokenized_data["train"], tokenized_data["val"] = accelerator.prepare(
+    model, tokenized_data["train"], tokenized_data["val"]
+)
 
-    output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{r}"
+output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{R}"
 
-    training_args = TrainingArguments(
-        output_dir=output_dir,
-        eval_strategy="epoch",
-        save_strategy="epoch",
-        learning_rate=1e-4,
-        per_device_train_batch_size=4,
-        num_train_epochs=10,
-        logging_dir=f"{output_dir}/logs",
-        logging_steps=100,
-        save_total_limit=2,
-        bf16=torch.cuda.is_available(),
-        load_best_model_at_end=True,
-        report_to="none",
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
-        gradient_accumulation_steps=8,
-    )
+training_args = TrainingArguments(
+    output_dir=output_dir,
+    eval_strategy="epoch",
+    save_strategy="epoch",
+    learning_rate=1e-4,
+    per_device_train_batch_size=4,
+    num_train_epochs=10,
+    logging_dir=f"{output_dir}/logs",
+    logging_steps=100,
+    save_total_limit=2,
+    bf16=torch.cuda.is_available(),
+    load_best_model_at_end=True,
+    report_to="none",
+    metric_for_best_model="eval_loss",
+    greater_is_better=False,
+    gradient_accumulation_steps=8,
+)
 
-    early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=2)
+early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=2)
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_data["train"],
-        eval_dataset=tokenized_data["val"],
-        tokenizer=tokenizer,
-        callbacks=[early_stopping_callback],
-    )
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_data["train"],
+    eval_dataset=tokenized_data["val"],
+    tokenizer=tokenizer,
+    callbacks=[early_stopping_callback],
+)
 
-    print("Starting training...")
-    start = time.time()
-    trainer.train()
-    end = time.time()
-    print(f"Training time: {end - start} seconds")
+print("Starting training...")
+start = time.time()
+trainer.train()
+end = time.time()
+print(f"Training time: {end - start} seconds")
 
-    # Save only the LoRA weights
-    lora_output_dir = f"LoraWeights/{output_dir}/lora_weights"
-    model.save_pretrained(lora_output_dir)
-    print(f"LoRA weights saved to {lora_output_dir}")
+# Save only the LoRA weights
+lora_output_dir = f"LoraWeights/{output_dir}/lora_weights"
+model.save_pretrained(lora_output_dir)
+print(f"LoRA weights saved to {lora_output_dir}")
+
