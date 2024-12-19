@@ -167,3 +167,6 @@ cython_debug/
 #.idea/
 
 /test123.txt
+/LoRA/Working
+/LoRA/tokenized_datasets/linguistic_tokenized
+/LoRA/tokenized_datasets/meta_math_tokenized

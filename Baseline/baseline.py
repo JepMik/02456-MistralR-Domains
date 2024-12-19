@@ -19,7 +19,6 @@ if userToken:
 
 print("Script started...")
 
-
 # Constants
 MODEL_NAME = "mistralai/Mistral-7B-v0.1"
 OUTPUT_DIR = "Baseline/"
@@ -32,18 +31,15 @@ BATCH_SIZE = 8
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('alive_progress')
 
-
 def generate_responses(dataset, prompt_column, ground_truth_column, name_id, max_new_tokens=520):
     """
     Generate responses for a given dataset using the specified prompt column.
     Include the ground truth (claude_summary) in the results.
     """
-    flag_data = False
     results = {}
     batch_prompts = []
     batch_ids = []
     batch_groundtruths = []
-    current_batch = []
 
     with alive_bar(len(dataset)) as bar:
         for i, example in enumerate(dataset):
@@ -129,8 +125,6 @@ def load_or_process_datasets():
         linguistic_dataset = load_dataset("DopeorNope/Linguistic_Calibration_Llama3.1")
         meta_math_dataset = load_dataset("meta-math/MetaMathQA")
         
-        # Drop unnecessary columns for baseline: 
-
         # Get dataset sizes and subsample to match the smallest dataset
         min_size = min(len(linguistic_dataset['train']), len(meta_math_dataset['train']))
         linguistic_dataset['train'] = linguistic_dataset['train'].shuffle(seed=42).select(range(min_size))
@@ -164,9 +158,6 @@ def split_dataset(dataset):
 
 # Load or process the datasets
 linguistic_dataset, meta_math_dataset = load_or_process_datasets()
-#print(linguistic_dataset['test'])
-#print(linguistic_dataset['test'][0])
-
 
 # Load the model and tokenizer from the local directory if available and not empty
 if os.path.exists(MODELPATH) and os.listdir(MODELPATH):
@@ -191,24 +182,8 @@ print("Model loaded.")
 ling_test = linguistic_dataset["test"]
 math_test = meta_math_dataset["test"]
 
-
-# Decrease ling test to 2 for testing
-#ling_test = ling_test.select(range(20))
-#math_test = math_test.select(range(20))
-
-#print("Ling Test: " + str(ling_test))
-#print("Math Test: " + str(math_test))
-
-# print all in ling_test
-#for i in range(len(ling_test)):
-#    print(ling_test[i])
-
-
 linguistic_res = generate_responses(ling_test, prompt_column="paragraph_generation_prompt", ground_truth_column="claude_summary", name_id="question_id")
 math_res = generate_responses(math_test, prompt_column="query", ground_truth_column="response", name_id="type")
-
-#print("Results: " + str(linguistic_res))
-#print("Results: " + str(math_res))
 
 # Save linguistic results to disk as json   
 with open(f"{OUTPUT_DIR}/linguistic_results.json", "w") as f:
