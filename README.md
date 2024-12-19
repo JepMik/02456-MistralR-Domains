@@ -1,5 +1,5 @@
 # **02456-MistralR-Domains**  
-> Investigating cross-domain intelligence of LLM (Mistral7b) by LoRA finetuning on Linguistic and Mathematics datasets
+> Investigating cross-domain intelligence of LLM (Mistral7b) by LoRA finetuning on Linguistic and Mathematics datasets with different versions of rank r=[1, 4, 8 ,16]
 
 ## **Authors**
 - Jeppe Mikkelsen (s204708)
