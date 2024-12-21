@@ -59,11 +59,69 @@ We evaluated the generated responses against ground truth using ChatGPT 04-Mini.
 
 1. **Mathematical Tasks**  
    - Scored based on metrics such as **problem clarity**, **logical structure**, and **arithmetic complexity**.  
-   - Correct answers contributed 40% of the total score, with the remaining 60% distributed equally across other metrics.  
+   - Correct answers contributed 40% of the total score, with the remaining 60% distributed equally across other metrics. 
+
+
+   ```python
+   # Generate prompts for math
+   def generate_math_prompt(prompt):
+    gen_resp = prompt["generated_response"]
+    gen_resp =gen_resp.split("[/INST]")[1]
+    ground_truth = prompt["ground_truth"]
+    return f'''
+        I will provide to you a generated reponse and a ground truth aka desired reponse. 
+        Provide a score of the mathematical level of the generated response compared to the ground truth 
+        based on the following metrics:\n
+        - Clarity and Setup of the Problem\n
+        - Complexity of Arithmetic\n
+        - Conceptual Understanding\n
+        - Precision and Attention to Detail\n
+        - Logical Structure\n
+        - Accessibility\n
+        - Challenge Level\n
+        \n
+        Assume the level of the desired response corresponds to 100. Award 40 out of 100 points if the correct 
+        answer was reached. Award the remaining 60 points among the metrics, giving equal weight to all. Provide 
+        only the score between 0 and 100 as your response.
+        \n
+        Here are the generated response and the ground truth:
+        \n
+        *Generated response*
+        {gen_resp}
+        \n
+        *Ground truth*
+        {ground_truth}
+        '''
 
 2. **Linguistic Tasks**  
    - Scored on metrics such as **lexical diversity**, **syntactic complexity**, and **readability**.  
    - Ground truth responses were treated as the baseline with a score of 100.
+
+   ```python
+   # Generate prompts for linguistic calibration
+   def generate_ling_prompt(prompt):
+    gen_resp = prompt["generated_response"]
+    ground_truth = prompt["ground_truth"]
+
+    return f'''I will provide to you a generated reponse and a ground truth aka desired reponse. 
+                Provide a score of the linguistic level of the generated response compared to the ground truth 
+                based on the following metrics:\n
+                -  Lexical Diversity\n
+                - Syntactic Complexity\n
+                -  Clarity and Cohesion\n
+                -  Use of Figurative Language or Stylistic Elements\n
+                -  Readability\n
+                -  Engagement\n
+                Assume the level of the desired response corresponds to 100. Give all metrics equal weight. Provide only the score between 0 and 100 as your response.
+                \n
+                Here are the generated response and the ground truth:
+                \n
+                *Generated response*
+                {gen_resp}
+                \n
+                *Ground truth*
+                {ground_truth}
+                '''
 
 ### **Evaluation Process**  
 - **Prompts**: Responses and ground truths were formatted into task-specific prompts.  
