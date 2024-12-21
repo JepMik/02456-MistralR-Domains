@@ -6,8 +6,8 @@
 - Nina Peuker (s204669)
 - Mario Medoni (s204684)
 
-## ** Jupyter Notebook **
-As specified in the assignment instructions, the Git repository is required to include a Jupyter notebook capable of reproducing the results. However, this is not feasible in our case due to the size of the Mistral 7B model, which consists of 7 billion parameters and requires 27.8 GB of memory. Consequently, most of our work was conducted on the DTU HPC cluster, as it was the only environment capable of meeting these memory requirements.
+## **Jupyter Notebook**
+As specified in the assignment instructions, the Git repository is required to include a Jupyter notebook capable of reproducing the results. However, this is **not** feasible in our case due to the size of the Mistral 7B model, which consists of 7 billion parameters and requires 27.8 GB of memory. Consequently, most of our work was conducted on the DTU HPC cluster, as it was the only environment capable of meeting these memory requirements.
 
 We also attempted to include the actual LoRA adapters in the repository, but GitHub's file size limitations prevented us from doing so.
 
