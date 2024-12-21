@@ -1,3 +1,6 @@
+# Script to generate responses for the linguistic and mathematical datasets using the Mistral-7B model for Baselining
+
+# Imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import os
