@@ -1,3 +1,6 @@
+## Script to fine-tune a pretrained model with LoRA adapter
+## Usage: python lora.py <Math|Linguistic> <R>
+
 # Imports
 import torch
 from torch.utils.data import DataLoader
@@ -41,6 +44,7 @@ def load_tokenized_datasets(IsMath: bool):
     else:
         raise Exception("Tokenized datasets not found")
 
+# Load model and tokenizer and download if not found locally
 def load_model():
     if os.path.exists(MODELPATH) and os.listdir(MODELPATH):
         print(f"Loading model from {MODELPATH}...")
@@ -60,12 +64,11 @@ def load_model():
         tokenizer.save_pretrained(MODELPATH)
     return model, tokenizer
 
-print("Loading model and tokenizer...")
 
+print("Loading model and tokenizer...")
 model, tokenizer = load_model()
 tokenized_data = load_tokenized_datasets(isMath)
 
-#saved_tokenized_data = tokenized_data
 
 print("Starting freezing...")
 # Freeze the base model weights
@@ -73,35 +76,37 @@ for param in model.parameters():
     param.requires_grad = False
 
 print("Starting fine-tuning...")
-
 print(f"Fine-tuning with R={R}...")
 
-#tokenized_data = saved_tokenized_data
+# Set the padding token to eos token
 tokenizer.pad_token = tokenizer.eos_token
 
-
+# Set the LoRA config
 lora_config = LoraConfig(
-    task_type=TaskType.CAUSAL_LM,
+    task_type=TaskType.CAUSAL_LM, # Casual Language Modeling
     inference_mode=False,   
-    r=R,
-    lora_alpha=R,
-    lora_dropout=0.1,
-    target_modules=["q_proj", "v_proj","o_proj","gate_proj"]
+    r=R, # Rank of the adapter
+    lora_alpha=R, # Alpha value for LoRA
+    lora_dropout=0.1, # Dropout value for LoRA
+    target_modules=["q_proj", "v_proj","o_proj","gate_proj"] # Target modules for LoRA adapter training
 )
-
+# Peft model to load the LoRA adapter
 model = get_peft_model(model, lora_config)
 
+# Prepare the model for training
 model, tokenized_data["train"], tokenized_data["val"] = accelerator.prepare(
     model, tokenized_data["train"], tokenized_data["val"]
 )
 
+# Set the output directory
 output_dir = f"FineTuned_{'Math' if isMath else 'Linguistic'}_R{R}"
 
+# Training arguments
 training_args = TrainingArguments(
     output_dir=output_dir,
     eval_strategy="epoch",
     save_strategy="epoch",
-    learning_rate=1e-4,
+    learning_rate=1e-4, # Recommended learning rate for LoRA, decreases automatically
     per_device_train_batch_size=4,
     num_train_epochs=10,
     logging_dir=f"{output_dir}/logs",
@@ -110,12 +115,12 @@ training_args = TrainingArguments(
     bf16=torch.cuda.is_available(),
     load_best_model_at_end=True,
     report_to="none",
-    metric_for_best_model="eval_loss",
+    metric_for_best_model="eval_loss", # Eval loss = CrossEntropyLoss for causal LM
     greater_is_better=False,
     gradient_accumulation_steps=8,
 )
 
-early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=2)
+early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=2) # Early stopping callback
 
 trainer = Trainer(
     model=model,

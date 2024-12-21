@@ -1,4 +1,5 @@
 # Script used for evaluation of generated response and ground truth by prompting ChatGPT with the result
+# Have been commenting out the code to avoid running it when necessary
 import json
 from openai import OpenAI
 import os
@@ -109,10 +110,7 @@ print(ling_dict["FineTuned_Linguistic_R16"][0])
 #print(math_dict["FineTuned_Math_R1"][0])
 #print(ling_dict["FineTuned_Linguistic_R1"][0])
 
-
-
-
-api_key = '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'
+api_key = "placeholder" # Insert API key here
 
 def generate_scores(prompts):
     client = OpenAI(

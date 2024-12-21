@@ -1,3 +1,6 @@
+# Script to split datasets into train, validation, and test sets [0.8, 0.1, 0.1]
+
+# Imports
 from datasets import load_dataset, DatasetDict
 import os
 

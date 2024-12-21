@@ -1,3 +1,6 @@
+# Script used for tokenizing datasets for LoRA training
+# Goal: Decrease training time by tokenizing datasets before training ensuring that the tokenization process is not repeated during training
+
 # Imports
 import torch
 from transformers import AutoTokenizer
@@ -26,6 +29,7 @@ else:
     print(f"Saving tokenizer to {MODELPATH}...")
     tokenizer.save_pretrained(MODELPATH)
 
+# Set padding side
 tokenizer.padding_side = "right"
 
 # Function to load processed datasets

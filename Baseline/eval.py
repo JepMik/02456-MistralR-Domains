@@ -89,7 +89,7 @@ ling_prompts = [generate_ling_prompt(ling_prompt) for ling_prompt in ling_prompt
 math_prompts = [generate_math_prompt(math_prompt) for math_prompt in math_prompts]
 
 
-api_key = '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'
+api_key = "Placeholder" # Insert your OpenAI API key here
 
 def generate_scores(prompts):
     client = OpenAI(
@@ -107,10 +107,12 @@ def generate_scores(prompts):
         for chunk in stream:
             if chunk.choices[0].delta.content is not None:
                 stream_chunks += chunk.choices[0].delta.content
-
-        res = re.findall(r'\d+', stream_chunks)
-        res = list(map(int, res))
-        scores.append(res[0])  
+        try:
+            res = re.findall(r'\d+', stream_chunks)
+            res = list(map(int, res))
+            scores.append(res[0])  
+        except:
+            scores.append(0)  
 
     return scores    
             
