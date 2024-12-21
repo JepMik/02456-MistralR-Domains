@@ -97,5 +97,3 @@ Results of Cross Domain
 This project is licensed under the MIT License. See the `LICENSE` file for details.  
 
 ---  
-
-Let me know if you'd like me to expand on any specific section or tailor this template further!
